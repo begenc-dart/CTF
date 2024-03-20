@@ -65,7 +65,7 @@ def get_users(
     result = jsonable_encoder({"users": users, "total_users": total_users, "page": page, "page_size": page_size})
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 #----------------------------------------------------------------------
-@auth_router.post('/logIn')
+@auth_router.post('/logIn', status_code=status.HTTP_200_OK)
 def  logIn(req:Sigin,session:Session=Depends(get_db)):
     user = authenticate_admin(req.username, req.password, session)
     print(req.password)
@@ -74,8 +74,19 @@ def  logIn(req:Sigin,session:Session=Depends(get_db)):
         return JSONResponse(content={"data":"You are not Login"}, 
                         status_code=status.HTTP_400_BAD_REQUEST) 
     else:
-        return user
+        check="admin" if req.username=="AdminCTF" and req.password=="2024@newCTF" else "users"
+        return {"data":user,"check":check}
 #----------------------------------------------------------------------- 
+@auth_router.delete("/delete-user/{id}", status_code=status.HTTP_200_OK)
+async def delete_cate(id:int,db: Session = Depends(get_db)):
+   
+    check_delete= await delete_auth(id=id,db=db)
+    if(check_delete):
+        return JSONResponse(content={"info":"Sucessed"}, status_code=status.HTTP_201_CREATED)
+    else:
+       return JSONResponse(content={"info":"Unsucessed"}, status_code=status.HTTP_400_BAD_REQUEST)
+#-------------------------------------------------------------------------------------------------
+
 @auth_router.post('/create-users/', status_code=status.HTTP_201_CREATED)
 async def create_user(req: LoginShema, db: Session = Depends(get_db),):
     create_user_model = Users(
@@ -86,6 +97,7 @@ async def create_user(req: LoginShema, db: Session = Depends(get_db),):
         pasword = bcrypt_context.hash(req.pasword),
         # group_id=req.group_id
     )
+   
     db.add(create_user_model)
     db.commit()
     db.refresh(create_user_model)
@@ -97,8 +109,17 @@ async def create_user(req: LoginShema, db: Session = Depends(get_db),):
         .filter(Users.id == create_user_model.id)\
     .update({Users.token: access_token}, synchronize_session=False)
     db.commit()
-    return JSONResponse(content={'token': access_token}, 
+    
+    return JSONResponse(content={'token': access_token,}, 
                         status_code=status.HTTP_201_CREATED)
+
+#----------------------------------------------------------
+async def delete_auth(id:int,db: Session = Depends(get_db),):
+    data=db.query(Users)\
+            .filter(Users.id==id).delete(synchronize_session=False)
+    db.commit()
+    db.close()
+    return True
 #-----------------------------------------------------------------
 def get_hashed_password(password: str) -> str:
     return bcrypt_context.hash(password)
@@ -124,6 +145,8 @@ async def get_current_user(header_params: Request):
         username: str = payload.get('username')
         password: str = payload.get('password')
         user_id: int = payload.get('id')
+        
+        
         if username is None or user_id is None or password is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                                 detail='Could not validate user')
